@@ -123,7 +123,7 @@ th { color: var(--text-2); font-weight: 600; font-size: 13px; }
     </div>
     <div class="chart"><canvas id="dailyChart" aria-label="Denná spotreba v kWh"></canvas></div>
     <div class="legend">
-      <span><i class="dot" style="background:var(--pv)"></i>Pokryté vlastnou výrobou (FV + batéria)</span>
+      <span><i class="dot" style="background:var(--pv)"></i>Pokryté vlastnou výrobou</span>
       <span><i class="dot" style="background:var(--grid-c)"></i>Odobraté zo siete</span>
     </div>
     <p class="note">Kliknutím na stĺpec otvoríš detail dňa.</p>
@@ -188,7 +188,7 @@ function renderLive() {
     grid: { x: 86,  y: 215, color: "--grid-c", name: g < -0.02 ? "Do siete" : "Zo siete", p: Math.abs(g), dir: g > 0.02 ? 1 : g < -0.02 ? -1 : 0, icon: ICONS.grid },
     home: { x: 554, y: 215, color: "--load",   name: "Spotreba",   p: load, dir: load > 0.02 ? -1 : 0, icon: ICONS.home },
   };
-  if (has(L.bat) || has(L.soc)) nodes.bat = { x: 320, y: 378, color: "--bat", name: b < -0.02 ? "Nabíja sa" : b > 0.02 ? "Vybíja sa" : "Batéria",
+  if (hasBattery(L)) nodes.bat = { x: 320, y: 378, color: "--bat", name: b < -0.02 ? "Nabíja sa" : b > 0.02 ? "Vybíja sa" : "Batéria",
     p: Math.abs(b), dir: b > 0.02 ? 1 : b < -0.02 ? -1 : 0, soc: L.soc };
 
   let lines = "", parts = "";
@@ -212,7 +212,20 @@ function renderLive() {
     <text x="${C.x}" y="${C.y + 3}" text-anchor="middle" class="hubv">${own != null ? Math.round(own * 100) + "%" : "–"}</text>
     <text x="${C.x}" y="${C.y + 20}" text-anchor="middle" class="hubk">vlastné</text>`;
 
-  $("live").innerHTML = `<svg viewBox="0 0 640 430" role="img" aria-label="${flowSummary(pv, load, g, b, L.soc, own)}">${lines}${hub}${parts}</svg>`;
+  const vbH = nodes.bat ? 430 : 330;
+  $("live").innerHTML = `<svg viewBox="0 0 640 ${vbH}" role="img" aria-label="${flowSummary(pv, load, g, b, nodes.bat ? L.soc : null, own)}">${lines}${hub}${parts}</svg>`;
+}
+
+// Batéria sa zobrazí, len ak ju SEMS naozaj hlási (nenulový výkon alebo SOC teraz či v histórii).
+let batterySeen = null;
+function hasBattery(L) {
+  if (batterySeen === null) {
+    batterySeen = Object.values(H.days).some((d) =>
+      (d.totals && (d.totals.charge > 0 || d.totals.discharge > 0)) ||
+      (d.samples || []).some((r) => Math.abs(r[4] || 0) > 0.01 || (r[5] || 0) > 0));
+  }
+  if (Math.abs(L.bat || 0) > 0.01 || (L.soc || 0) > 0) batterySeen = true;
+  return batterySeen;
 }
 
 function label(k, n) {

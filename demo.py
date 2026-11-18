@@ -10,6 +10,7 @@ from pathlib import Path
 import fetch
 
 random.seed(7)
+BATTERY = "--battery" in __import__("sys").argv   # python demo.py --battery
 days = {}
 today = date.today()
 for i in range(75, -1, -1):
@@ -30,14 +31,16 @@ for i in range(75, -1, -1):
             load += random.uniform(0, 1.5)
         surplus = pv - load
         bat = 0.0
-        if surplus > 0 and soc < 100:
+        if not BATTERY:
+            pass
+        elif surplus > 0 and soc < 100:
             bat = min(surplus, 2.5)
         elif surplus < 0 and soc > 10:
             bat = max(surplus, -2.5)
         soc = min(100, max(10, soc + bat * 0.25 / 10 * 100))
         grid = -(surplus - bat)   # kladné = odber
         samples.append([f"{m // 60:02d}:{m % 60:02d}", round(pv, 3), round(load, 3),
-                        round(grid, 3), round(-bat, 3), round(soc)])
+                        round(grid, 3), round(-bat, 3), round(soc) if BATTERY else None])
     days[d.isoformat()] = {"samples": samples}
 
 h = {"format": 2, "grid_sign": 1, "station": {"name": "Ukážka"}, "days": days}

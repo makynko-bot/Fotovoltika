@@ -11,21 +11,21 @@
   color-scheme: light;
   --bg: #f4f3f0; --surface: #fcfcfb; --border: #e3e2dd;
   --text: #0b0b0b; --text-2: #52514e; --muted: #85837d; --grid: #ebeae6;
-  --load: #2a78d6; --pv: #eb6834; --grid-c: #1baf7a;
+  --load: #2a78d6; --pv: #eb6834; --grid-c: #1baf7a; --bat: #eda100;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
     --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85; --grid: #262624;
-    --load: #3987e5; --pv: #d95926; --grid-c: #199e70;
+    --load: #3987e5; --pv: #d95926; --grid-c: #199e70; --bat: #c98500;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
   --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85; --grid: #262624;
-  --load: #3987e5; --pv: #d95926; --grid-c: #199e70;
+  --load: #3987e5; --pv: #d95926; --grid-c: #199e70; --bat: #c98500;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -61,6 +61,18 @@ th { color: var(--text-2); font-weight: 600; font-size: 13px; }
 .banner { background: color-mix(in srgb, var(--pv) 14%, var(--surface)); border: 1px solid var(--border);
   border-radius: 10px; padding: 8px 12px; margin-top: 12px; font-size: 14px; }
 .err { color: #d03b3b; }
+.flow { max-width: 680px; margin: 4px auto 0; }
+.flow svg { width: 100%; height: auto; display: block; overflow: visible; }
+.flow .nk { fill: var(--text-2); font-size: 20px; }
+.flow .nv { fill: var(--text); font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.flow .u { fill: var(--text-2); font-size: 18px; font-weight: 500; }
+.flow .hubv { fill: var(--text); font-size: 24px; font-weight: 700; }
+.flow .hubk { fill: var(--muted); font-size: 13px; }
+.flow .ring { transition: stroke-dasharray .6s ease; }
+.flowline { animation: flow 1.5s linear infinite; }
+.flowline.rev { animation-direction: reverse; }
+@keyframes flow { to { stroke-dashoffset: -32; } }
+@media (prefers-reduced-motion: reduce) { .flowline { animation: none; stroke-dasharray: none; } }
 #liveInfo { display: inline-flex; align-items: center; gap: 6px; }
 .pulse { animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
@@ -77,7 +89,7 @@ th { color: var(--text-2); font-weight: 600; font-size: 13px; }
 
   <section class="card">
     <div class="row"><h2>Práve teraz</h2><span class="sub" id="liveInfo"></span></div>
-    <div class="tiles" id="live"></div>
+    <div id="live" class="flow"></div>
   </section>
 
   <section class="card">
@@ -154,14 +166,77 @@ function tile(label, value, unit, color) {
 }
 
 let liveData = null;
+// ---------------------------------------------------------------- diagram tokov energie
+const ICONS = {
+  pv: '<circle r="7" fill="none" stroke="currentColor" stroke-width="2.5"/>' +
+      [0,45,90,135,180,225,270,315].map(a => `<line x1="0" y1="-11" x2="0" y2="-15" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" transform="rotate(${a})"/>`).join(""),
+  grid: '<path d="M-8 15 L-3 -13 L3 -13 L8 15 M-12 -7 H12 M-10 1 H10 M-5.5 -1 L5.5 9 M5.5 -1 L-5.5 9" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"/>',
+  home: '<path d="M-13 -1 L0 -13 L13 -1 M-9 -4 V13 H9 V-4 M-3 13 V5 H3 V13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>',
+};
+let batSign = 1;   // +1: kladné pBat = vybíjanie
+
 function renderLive() {
   const L = liveData || H.live || {};
-  const g = L.grid == null ? null : L.grid * (H.grid_sign || 1);
-  $("live").innerHTML =
-    tile("Výroba FV", fmt(L.pv, 2), "kW", "--pv") +
-    tile("Spotreba domu", fmt(L.load, 2), "kW", "--load") +
-    tile(g != null && g < 0 ? "Dodávka do siete" : "Odber zo siete", fmt(g == null ? null : Math.abs(g), 2), "kW", "--grid-c") +
-    (L.soc != null ? tile("Batéria", fmt(L.soc, 0), "%") : "");
+  const has = (v) => v != null && !isNaN(v);
+  const pv = Math.max(L.pv || 0, 0), load = Math.max(L.load || 0, 0);
+  const g = has(L.grid) ? L.grid * (H.grid_sign || 1) : 0;        // + odber, - dodávka
+  // znamienko batérie odvodíme z energetickej bilancie: vybíjanie = spotreba - FV - odber
+  const resid = load - pv - g;
+  if (has(L.bat) && Math.abs(L.bat) > 0.05 && Math.abs(resid) > 0.05) batSign = Math.sign(resid) * Math.sign(L.bat);
+  const b = has(L.bat) ? L.bat * batSign : 0;                      // + vybíjanie, - nabíjanie
+  const own = load > 0 ? Math.min(Math.max((load - Math.max(g, 0)) / load, 0), 1) : null;
+
+  const C = { x: 320, y: 215 }, HUB = 46, R = 38;
+  const nodes = {
+    pv:   { x: 320, y: 52,   color: "--pv",     name: "Výroba FV",  p: pv,  dir: pv > 0.02 ? 1 : 0, icon: ICONS.pv },
+    grid: { x: 86,  y: 215, color: "--grid-c", name: g < -0.02 ? "Do siete" : "Zo siete", p: Math.abs(g), dir: g > 0.02 ? 1 : g < -0.02 ? -1 : 0, icon: ICONS.grid },
+    home: { x: 554, y: 215, color: "--load",   name: "Spotreba",   p: load, dir: load > 0.02 ? -1 : 0, icon: ICONS.home },
+  };
+  if (has(L.bat) || has(L.soc)) nodes.bat = { x: 320, y: 378, color: "--bat", name: b < -0.02 ? "Nabíja sa" : b > 0.02 ? "Vybíja sa" : "Batéria",
+    p: Math.abs(b), dir: b > 0.02 ? 1 : b < -0.02 ? -1 : 0, soc: L.soc };
+
+  let lines = "", parts = "";
+  for (const [k, n] of Object.entries(nodes)) {
+    const dx = C.x - n.x, dy = C.y - n.y, d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
+    const x1 = n.x + ux * (R + 6), y1 = n.y + uy * (R + 6), x2 = C.x - ux * (HUB + 6), y2 = C.y - uy * (HUB + 6);
+    const active = n.dir !== 0;
+    const dur = Math.max(0.5, 2.4 - Math.log2(1 + n.p) * 0.75).toFixed(2);   // väčší výkon = rýchlejší tok
+    lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--border)" stroke-width="5" stroke-linecap="round"/>`;
+    if (active) lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="flowline ${n.dir < 0 ? "rev" : ""}"
+        style="stroke:var(${n.color});animation-duration:${dur}s" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 14"/>`;
+    const icon = k === "bat" ? batteryIcon(n.soc) : `<g transform="translate(${n.x} ${n.y})" style="color:var(${n.color})">${n.icon}</g>`;
+    parts += `<circle cx="${n.x}" cy="${n.y}" r="${R}" fill="var(--surface)" stroke="var(${active ? n.color : "--border"})" stroke-width="2.5"/>
+      ${k === "bat" ? `<g transform="translate(${n.x} ${n.y})" style="color:var(${n.color})">${icon}</g>` : icon}
+      ${label(k, n)}`;
+  }
+  const circ = 2 * Math.PI * (HUB - 5);
+  const hub = `<circle cx="${C.x}" cy="${C.y}" r="${HUB - 5}" fill="var(--surface)" stroke="var(--border)" stroke-width="7"/>
+    ${own != null ? `<circle cx="${C.x}" cy="${C.y}" r="${HUB - 5}" fill="none" stroke="var(--pv)" stroke-width="7" stroke-linecap="round"
+      stroke-dasharray="${(own * circ).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${C.x} ${C.y})" class="ring"/>` : ""}
+    <text x="${C.x}" y="${C.y + 3}" text-anchor="middle" class="hubv">${own != null ? Math.round(own * 100) + "%" : "–"}</text>
+    <text x="${C.x}" y="${C.y + 20}" text-anchor="middle" class="hubk">vlastné</text>`;
+
+  $("live").innerHTML = `<svg viewBox="0 0 640 430" role="img" aria-label="${flowSummary(pv, load, g, b, L.soc, own)}">${lines}${hub}${parts}</svg>`;
+}
+
+function label(k, n) {
+  const val = `${fmt(n.p, n.p < 10 ? 2 : 1)} <tspan class="u">kW</tspan>`;
+  const soc = n.soc != null ? ` <tspan class="u">· ${fmt(n.soc, 0)} %</tspan>` : "";
+  if (k === "pv")  return `<text x="${n.x + 52}" y="${n.y - 6}" class="nk">${n.name}</text><text x="${n.x + 52}" y="${n.y + 22}" class="nv">${val}</text>`;
+  if (k === "bat") return `<text x="${n.x + 52}" y="${n.y - 6}" class="nk">${n.name}</text><text x="${n.x + 52}" y="${n.y + 22}" class="nv">${val}${soc}</text>`;
+  return `<text x="${n.x}" y="${n.y + 64}" text-anchor="middle" class="nk">${n.name}</text><text x="${n.x}" y="${n.y + 92}" text-anchor="middle" class="nv">${val}</text>`;
+}
+
+function batteryIcon(soc) {
+  const f = Math.min(Math.max((soc ?? 0) / 100, 0), 1);
+  return `<rect x="-9" y="-13" width="18" height="27" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <rect x="-4" y="-17" width="8" height="4" rx="1" fill="currentColor"/>
+    <rect x="-5.5" y="${(10.5 - 20 * f).toFixed(1)}" width="11" height="${(20 * f).toFixed(1)}" rx="1.5" fill="currentColor"/>`;
+}
+
+function flowSummary(pv, load, g, b, soc, own) {
+  return `Výroba ${fmt(pv, 2)} kW, spotreba ${fmt(load, 2)} kW, ${g < 0 ? "dodávka do siete" : "odber zo siete"} ${fmt(Math.abs(g), 2)} kW` +
+    (soc != null ? `, batéria ${fmt(soc, 0)} %` : "") + (own != null ? `, vlastné pokrytie ${Math.round(own * 100)} %` : "");
 }
 
 function renderDay(k) {

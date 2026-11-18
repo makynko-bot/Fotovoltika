@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moja fotovoltika</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☀️</text></svg>">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface: #fcfcfb; --border: #e3e2dd;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #85837d; --grid: #ebeae6;
+  --load: #2a78d6; --pv: #eb6834; --grid-c: #1baf7a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85; --grid: #262624;
+    --load: #3987e5; --pv: #d95926; --grid-c: #199e70;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface: #1a1a19; --border: #2c2c2a;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85; --grid: #262624;
+  --load: #3987e5; --pv: #d95926; --grid-c: #199e70;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+h1 { font-size: 24px; margin: 0; }
+h2 { font-size: 17px; margin: 0; }
+.sub { color: var(--muted); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 16px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.tile { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.tile .k { color: var(--text-2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tile .v small { font-size: 14px; font-weight: 500; color: var(--text-2); }
+.dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
+.nav { display: flex; gap: 6px; align-items: center; }
+button, input[type=date], select {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .4; cursor: default; }
+.chart { position: relative; height: 300px; margin-top: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--text-2); font-size: 13px; margin-top: 10px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-2); font-weight: 600; font-size: 13px; }
+.tablewrap { overflow-x: auto; }
+.note { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.banner { background: color-mix(in srgb, var(--pv) 14%, var(--surface)); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 12px; margin-top: 12px; font-size: 14px; }
+.err { color: #d03b3b; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>☀️ Moja fotovoltika</h1>
+    <span class="sub" id="updated">Načítavam…</span>
+  </header>
+  <div id="demo" class="banner" hidden>Zobrazujú sa <b>ukážkové dáta</b> – skutočné sa objavia po prvom behu s prihlasovacími údajmi SEMS.</div>
+
+  <section class="card">
+    <h2>Práve teraz</h2>
+    <div class="tiles" id="live"></div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <h2 id="dayTitle">Deň</h2>
+      <div class="nav">
+        <button id="prev" aria-label="Predchádzajúci deň">‹</button>
+        <input type="date" id="dayPick">
+        <button id="next" aria-label="Nasledujúci deň">›</button>
+        <button id="todayBtn">Dnes</button>
+      </div>
+    </div>
+    <div class="tiles" id="dayTiles"></div>
+    <div class="chart"><canvas id="powerChart" aria-label="Priebeh výkonu počas dňa"></canvas></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--load)"></i>Spotreba domu</span>
+      <span><i class="dot" style="background:var(--pv)"></i>Výroba FV</span>
+      <span><i class="dot" style="background:var(--grid-c)"></i>Odber zo siete</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row">
+      <h2>Denná spotreba</h2>
+      <select id="range">
+        <option value="14">Posledných 14 dní</option>
+        <option value="30" selected>Posledných 30 dní</option>
+        <option value="90">Posledných 90 dní</option>
+        <option value="365">Posledný rok</option>
+      </select>
+    </div>
+    <div class="chart"><canvas id="dailyChart" aria-label="Denná spotreba v kWh"></canvas></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--pv)"></i>Pokryté vlastnou výrobou (FV + batéria)</span>
+      <span><i class="dot" style="background:var(--grid-c)"></i>Odobraté zo siete</span>
+    </div>
+    <p class="note">Kliknutím na stĺpec otvoríš detail dňa.</p>
+  </section>
+
+  <section class="card">
+    <h2>Súhrn po mesiacoch</h2>
+    <div class="tablewrap"><table id="months"></table></div>
+  </section>
+
+  <p class="note" id="foot"></p>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 1) => (v == null || isNaN(v)) ? "–" : v.toLocaleString("sk-SK", { minimumFractionDigits: d, maximumFractionDigits: d });
+const MONTHS = ["január","február","marec","apríl","máj","jún","júl","august","september","október","november","december"];
+const WD = ["ne","po","ut","st","št","pi","so"];
+
+let H = null, dayKeys = [], current = null, powerChart = null, dailyChart = null;
+
+function dayLabel(k, long = false) {
+  const d = new Date(k + "T12:00:00");
+  return long
+    ? d.toLocaleDateString("sk-SK", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : `${WD[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+}
+
+function totals(k) {
+  const t = (H.days[k] || {}).totals || {};
+  const load = t.load, buy = t.buy;
+  const own = (load != null && buy != null) ? Math.max(load - buy, 0) : null;
+  return { ...t, own, selfShare: (own != null && load) ? own / load * 100 : null };
+}
+
+function tile(label, value, unit, color) {
+  return `<div class="tile"><div class="k">${color ? `<i class="dot" style="background:var(${color})"></i>` : ""}${label}</div>
+    <div class="v">${value} <small>${unit}</small></div></div>`;
+}
+
+function renderLive() {
+  const L = H.live || {};
+  const g = L.grid == null ? null : L.grid * (H.grid_sign || 1);
+  $("live").innerHTML =
+    tile("Výroba FV", fmt(L.pv, 2), "kW", "--pv") +
+    tile("Spotreba domu", fmt(L.load, 2), "kW", "--load") +
+    tile(g != null && g < 0 ? "Dodávka do siete" : "Odber zo siete", fmt(g == null ? null : Math.abs(g), 2), "kW", "--grid-c") +
+    (L.soc != null ? tile("Batéria", fmt(L.soc, 0), "%") : "");
+}
+
+function renderDay(k) {
+  current = k;
+  $("dayPick").value = k;
+  $("dayTitle").textContent = dayLabel(k, true);
+  const i = dayKeys.indexOf(k);
+  $("prev").disabled = i <= 0;
+  $("next").disabled = i < 0 || i >= dayKeys.length - 1;
+
+  const t = totals(k);
+  $("dayTiles").innerHTML =
+    tile("Spotreba", fmt(t.load), "kWh", "--load") +
+    tile("Výroba", fmt(t.pv), "kWh", "--pv") +
+    tile("Zo siete", fmt(t.buy), "kWh", "--grid-c") +
+    tile("Do siete", fmt(t.sell), "kWh") +
+    tile("Pokrytie vlastnou výrobou", fmt(t.selfShare, 0), "%");
+
+  const s = (H.days[k] || {}).samples || [];
+  const sign = H.grid_sign || 1;
+  const pts = (idx, f = (v) => v) => s.map((r) => ({ x: r[0], y: r[idx] == null ? null : f(r[idx]) }));
+  const labels = s.map((r) => r[0]);
+  const data = {
+    labels,
+    datasets: [
+      { label: "Spotreba domu", data: pts(2), borderColor: css("--load"), backgroundColor: css("--load") + "22", fill: true },
+      { label: "Výroba FV", data: pts(1), borderColor: css("--pv"), backgroundColor: css("--pv") + "22", fill: true },
+      { label: "Odber zo siete", data: pts(3, (v) => Math.max(v * sign, 0)), borderColor: css("--grid-c"), fill: false, borderDash: [4, 3] },
+    ],
+  };
+  if (powerChart) { powerChart.data = data; powerChart.update(); return; }
+  powerChart = new Chart($("powerChart"), {
+    type: "line", data,
+    options: baseOptions({
+      elements: { point: { radius: 0, hoverRadius: 5 }, line: { borderWidth: 2, tension: 0.25 } },
+      scales: {
+        x: axis({ ticks: { maxTicksLimit: 8, autoSkip: true, maxRotation: 0 } }),
+        y: axis({ beginAtZero: true, title: { display: true, text: "kW", color: css("--muted") } }),
+      },
+      plugins: { tooltip: tooltip((c) => `${c.dataset.label}: ${fmt(c.parsed.y, 2)} kW`) },
+      interaction: { mode: "index", intersect: false },
+    }),
+  });
+}
+
+function renderDaily() {
+  const n = +$("range").value;
+  const keys = dayKeys.slice(-n);
+  const own = keys.map((k) => totals(k).own ?? totals(k).load ?? null);
+  const buy = keys.map((k) => totals(k).own != null ? totals(k).buy : null);
+  const data = {
+    labels: keys.map((k) => dayLabel(k)),
+    datasets: [
+      { label: "Vlastná výroba", data: own, backgroundColor: css("--pv"), borderColor: css("--surface"), borderWidth: { top: 2 }, borderRadius: 0, borderSkipped: false, stack: "s" },
+      { label: "Zo siete", data: buy, backgroundColor: css("--grid-c"), borderRadius: { topLeft: 4, topRight: 4 }, borderSkipped: "bottom", stack: "s" },
+    ],
+  };
+  const opts = baseOptions({
+    scales: {
+      x: axis({ stacked: true, grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 15 } }),
+      y: axis({ stacked: true, beginAtZero: true, title: { display: true, text: "kWh", color: css("--muted") } }),
+    },
+    plugins: { tooltip: tooltip((c) => `${c.dataset.label}: ${fmt(c.parsed.y)} kWh`,
+      (items) => { const k = keys[items[0].dataIndex]; return `Spolu: ${fmt(totals(k).load)} kWh`; }) },
+    interaction: { mode: "index", intersect: false },
+    onClick: (_, els) => { if (els.length) { renderDay(keys[els[0].index]); $("dayTitle").scrollIntoView({ behavior: "smooth", block: "center" }); } },
+    onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+    datasets: { bar: { maxBarThickness: 28, categoryPercentage: 0.85, barPercentage: 0.9 } },
+  });
+  if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart($("dailyChart"), { type: "bar", data, options: opts });
+}
+
+function renderMonths() {
+  const m = {};
+  for (const k of dayKeys) {
+    const key = k.slice(0, 7), t = totals(k);
+    const a = (m[key] ||= { load: 0, pv: 0, buy: 0, sell: 0, days: 0 });
+    for (const f of ["load", "pv", "buy", "sell"]) a[f] += t[f] || 0;
+    a.days++;
+  }
+  const rows = Object.keys(m).sort().reverse().map((key) => {
+    const a = m[key], [y, mo] = key.split("-");
+    const share = a.load ? Math.max(a.load - a.buy, 0) / a.load * 100 : null;
+    return `<tr><td>${MONTHS[+mo - 1]} ${y}</td><td>${fmt(a.load, 0)}</td><td>${fmt(a.load / a.days)}</td>
+      <td>${fmt(a.pv, 0)}</td><td>${fmt(a.buy, 0)}</td><td>${fmt(a.sell, 0)}</td><td>${fmt(share, 0)} %</td></tr>`;
+  });
+  $("months").innerHTML = `<thead><tr><th>Mesiac</th><th>Spotreba kWh</th><th>Ø za deň</th><th>Výroba kWh</th>
+    <th>Zo siete kWh</th><th>Do siete kWh</th><th>Vlastné pokrytie</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+}
+
+function axis(extra) {
+  return { grid: { color: css("--grid") }, border: { display: false },
+    ...extra, ticks: { color: css("--muted"), ...(extra.ticks || {}) } };
+}
+function tooltip(label, footer) {
+  return { backgroundColor: css("--surface"), titleColor: css("--text"), bodyColor: css("--text-2"), footerColor: css("--text"),
+    borderColor: css("--border"), borderWidth: 1, padding: 10, boxPadding: 4, usePointStyle: true,
+    callbacks: { label, ...(footer ? { footer } : {}) } };
+}
+function baseOptions(o) {
+  return { responsive: true, maintainAspectRatio: false, animation: { duration: 250 }, ...o,
+    plugins: { legend: { display: false }, ...(o.plugins || {}) } };
+}
+
+function renderAll() {
+  renderLive(); renderDay(current || dayKeys[dayKeys.length - 1]); renderDaily(); renderMonths();
+}
+
+async function init() {
+  try {
+    const r = await fetch("data/history.json?t=" + Date.now());
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    H = await r.json();
+  } catch (e) {
+    $("updated").innerHTML = `<span class="err">Dáta sa nepodarilo načítať (${e.message}).</span>`;
+    return;
+  }
+  dayKeys = Object.keys(H.days).sort();
+  if (!dayKeys.length) { $("updated").textContent = "Zatiaľ žiadne dáta."; return; }
+  $("demo").hidden = !H.demo;
+  const u = new Date(H.updated);
+  $("updated").textContent = "Aktualizované " + u.toLocaleString("sk-SK", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+  $("dayPick").min = dayKeys[0]; $("dayPick").max = dayKeys[dayKeys.length - 1];
+  $("foot").textContent = "Dáta zo SEMS+ sa sťahujú približne každých 15 minút. Denné súčty sú dopočítané z priebehu výkonu, ak ich striedač nehlási priamo.";
+  renderAll();
+}
+
+$("prev").onclick = () => renderDay(dayKeys[dayKeys.indexOf(current) - 1]);
+$("next").onclick = () => renderDay(dayKeys[dayKeys.indexOf(current) + 1]);
+$("todayBtn").onclick = () => renderDay(dayKeys[dayKeys.length - 1]);
+$("dayPick").onchange = (e) => { if (H.days[e.target.value]) renderDay(e.target.value); };
+$("range").onchange = renderDaily;
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (powerChart) { powerChart.destroy(); powerChart = null; } renderAll();
+});
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+name: Aktualizácia dát zo SEMS
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # každých 15 min (GitHub to občas o pár minút posunie)
+  workflow_dispatch:          # ručné spustenie z karty Actions
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sems-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # História sa drží v samostatnej vetve "data" (jeden commit, prepisuje sa),
+      # aby hlavná vetva nerástla o stovky commitov denne.
+      - name: Načítať históriu z vetvy data
+        run: |
+          mkdir -p data
+          # Ak vetva existuje, musí sa podariť načítať – inak by sa história prepísala.
+          if git ls-remote --exit-code --heads origin data >/dev/null; then
+            git fetch --depth=1 origin data
+            git show FETCH_HEAD:history.json > data/history.json
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stiahnuť dáta zo SEMS+
+        env:
+          SEMS_ACCOUNT: ${{ secrets.SEMS_ACCOUNT }}
+          SEMS_PASSWORD: ${{ secrets.SEMS_PASSWORD }}
+          SEMS_STATION_ID: ${{ secrets.SEMS_STATION_ID }}
+          TZ_NAME: Europe/Bratislava
+        run: |
+          pip install -q requests
+          python fetch.py
+
+      - name: Uložiť históriu do vetvy data
+        run: |
+          cd data
+          git init -q -b data
+          git config user.name "sems-bot"
+          git config user.email "sems-bot@users.noreply.github.com"
+          git add history.json
+          git commit -q -m "Aktualizácia $(date -u +%FT%TZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data
+
+      - name: Pripraviť stránku
+        run: |
+          mkdir -p site/data
+          cp data/history.json site/data/history.json
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

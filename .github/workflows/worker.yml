@@ -43,6 +43,32 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Zaregistrovať adresu workers.dev (ak ešte nie je)
+        if: steps.check.outputs.skip != '1'
+        env:
+          T: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"
+          cur=$(curl -sS -H "Authorization: Bearer $T" "$api" || true)
+          if echo "$cur" | grep -qE '"subdomain":"[a-z0-9-]+"'; then
+            echo "Subdoména už existuje: $(echo "$cur" | grep -oE '"subdomain":"[a-z0-9-]+"')"
+            exit 0
+          fi
+          base=$(echo "${OWNER,,}" | tr -c 'a-z0-9-\n' '-')
+          for name in "$base" "$base-solar" "fotovoltika-$base" "$base-$RANDOM"; do
+            res=$(curl -sS -X PUT -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+                  -d "{\"subdomain\":\"$name\"}" "$api" || true)
+            if echo "$res" | grep -q '"success":true'; then
+              echo "Zaregistrovaná subdoména: $name.workers.dev"
+              sleep 10
+              exit 0
+            fi
+            echo "Subdoména $name nevyšla: $(echo "$res" | grep -oE '"message":"[^"]*"' | head -1)"
+          done
+          echo "::error::Subdoménu workers.dev sa nepodarilo vytvoriť. Otvor v Cloudflare Workers & Pages a dokonči úvodné nastavenie (vyber subdoménu)."
+          exit 1
+
       - name: Nasadiť Worker
         id: deploy
         if: steps.check.outputs.skip != '1'

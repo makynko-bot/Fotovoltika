@@ -164,4 +164,3 @@ function md5(str) {
   return [a0, b0, c0, d0].map((v) => [0, 8, 16, 24].map((s) => ((v >>> s) & 255).toString(16).padStart(2, "0")).join("")).join("");
 }
 
-export { md5 }; // pre testy

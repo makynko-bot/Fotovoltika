@@ -44,18 +44,24 @@ zhruba každých 5 minút, takže rýchlejšie to cez cloud nejde).
 Worker je malý program bežiaci na serveroch Cloudflare – zadarmo do 100 000 požiadaviek denne.
 Prihlási sa do SEMS a stránke vráti iba čísla, heslo zostane u neho.
 
-1. Založ si bezplatný účet na <https://dash.cloudflare.com/sign-up>.
-2. V ľavom menu **Compute (Workers) → Workers & Pages → Create → Start with Hello World**,
-   pomenuj ho napr. `fotovoltika` a daj **Deploy**.
-3. **Edit code** → celý obsah nahraď súborom [`worker/worker.js`](worker/worker.js) → **Deploy**.
-4. Vo Workeri **Settings → Variables and Secrets → Add**, typ **Secret**:
-   `SEMS_ACCOUNT`, `SEMS_PASSWORD` (rovnaké hodnoty ako na GitHube).
-   Voliteľne typ *Text*: `ALLOWED_ORIGIN` = `https://<tvoj-github-login>.github.io`
-   (aby sa naň nemohli pýtať iné stránky).
-5. Otvor adresu Workera (napr. `https://fotovoltika.<meno>.workers.dev`) – musíš vidieť
-   niečo ako `{"time":"…","pv":1.2,"load":0.8,…}`.
-6. Na GitHube: **Settings → Secrets and variables → Actions → záložka Variables → New repository variable**
-   `LIVE_URL` = adresa Workera. Potom spusti workflow ručne (alebo počkaj na najbližší beh).
+**Automaticky (odporúčané)** – GitHub Worker nahrá a nastaví sám:
+
+1. Založ si bezplatný účet na <https://dash.cloudflare.com/sign-up> a potvrď e-mail.
+2. V Cloudflare raz otvor v ľavom menu **Workers & Pages** (tým sa ti vytvorí adresa `…workers.dev`).
+3. Vpravo hore ikonka profilu → **Profile → API Tokens → Create Token** → pri šablóne
+   **Edit Cloudflare Workers** daj **Use template** → dole **Continue to summary** → **Create Token**.
+   Token (dlhý reťazec) skopíruj – zobrazí sa len raz.
+4. Na GitHube: **Settings → Secrets and variables → Actions → New repository secret**,
+   názov `CLOUDFLARE_API_TOKEN`, hodnota = skopírovaný token.
+5. **Actions → „Nasadenie Cloudflare Workera (naživo)“ → Run workflow.**
+
+Workflow nahrá Worker, odovzdá mu `SEMS_ACCOUNT`/`SEMS_PASSWORD` z GitHub Secrets, overí, že odpovedá,
+a jeho adresu zapíše do `site/config.json`. Stránka ju začne používať pri najbližšej aktualizácii (do ~15 min).
+Ak zmeníš heslo do SEMS, uprav ho v GitHub Secrets a tento workflow spusti znova.
+
+**Ručne** – v Cloudflare vytvor Worker (Create → Start with Hello World), vlož doň `worker/worker.js`,
+v Settings → Variables and Secrets pridaj secrets `SEMS_ACCOUNT` a `SEMS_PASSWORD` a adresu Workera
+ulož na GitHube ako premennú repozitára `LIVE_URL` (Settings → Secrets and variables → Actions → Variables).
 
 Na stránke sa pri „Práve teraz“ objaví zelená bodka **naživo**.
 
@@ -82,5 +88,6 @@ Skutočné dáta: `SEMS_ACCOUNT=... SEMS_PASSWORD=... python fetch.py`
 - `fetch.py` – klient SEMS+ API a ukladanie histórie
 - `site/index.html` – webová stránka (Chart.js)
 - `.github/workflows/update.yml` – plánované sťahovanie a nasadenie na GitHub Pages
+- `.github/workflows/worker.yml` – automatické nasadenie Cloudflare Workera
 - `worker/worker.js` – Cloudflare Worker pre okamžité hodnoty
 - `demo.py` – ukážkové dáta

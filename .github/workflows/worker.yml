@@ -1,0 +1,94 @@
+name: Nasadenie Cloudflare Workera (naživo)
+
+# Nahrá worker/worker.js do Cloudflare, nastaví mu prihlasovacie údaje k SEMS
+# a jeho adresu zapíše do site/config.json, aby ju stránka používala.
+# Potrebuje tajomstvo CLOUDFLARE_API_TOKEN (šablóna „Edit Cloudflare Workers“).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["worker/**", ".github/workflows/worker.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: worker-deploy
+  cancel-in-progress: false
+
+env:
+  WORKER_NAME: fotovoltika
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Kontrola tokenu
+        id: check
+        env:
+          CF: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CF" ]; then
+            echo "::notice::Chýba tajomstvo CLOUDFLARE_API_TOKEN – Worker sa nenasadí (stránka funguje aj bez neho)."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != '1'
+        with:
+          node-version: "20"
+
+      - name: Nasadiť Worker
+        id: deploy
+        if: steps.check.outputs.skip != '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ORIGIN: https://${{ github.repository_owner }}.github.io
+        run: |
+          set -o pipefail
+          npx --yes wrangler@3.90.0 deploy worker/worker.js \
+            --name "$WORKER_NAME" --compatibility-date 2024-11-01 \
+            --var "ALLOWED_ORIGIN:${ORIGIN,,}" 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$url" ]; then
+            echo "::error::Nepodarilo sa zistiť adresu Workera. Otvor raz v Cloudflare stránku Workers & Pages (vytvorí sa subdoména workers.dev) a spusti znova."
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Uložiť prihlasovacie údaje SEMS do Workera
+        if: steps.check.outputs.skip != '1'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SEMS_ACCOUNT: ${{ secrets.SEMS_ACCOUNT }}
+          SEMS_PASSWORD: ${{ secrets.SEMS_PASSWORD }}
+          SEMS_STATION_ID: ${{ secrets.SEMS_STATION_ID }}
+        run: |
+          printf '%s' "$SEMS_ACCOUNT"  | npx --yes wrangler@3.90.0 secret put SEMS_ACCOUNT  --name "$WORKER_NAME"
+          printf '%s' "$SEMS_PASSWORD" | npx --yes wrangler@3.90.0 secret put SEMS_PASSWORD --name "$WORKER_NAME"
+          if [ -n "$SEMS_STATION_ID" ]; then
+            printf '%s' "$SEMS_STATION_ID" | npx --yes wrangler@3.90.0 secret put SEMS_STATION_ID --name "$WORKER_NAME"
+          fi
+
+      - name: Overiť Worker
+        if: steps.check.outputs.skip != '1'
+        run: |
+          sleep 5
+          curl -sS --retry 3 --retry-delay 5 "${{ steps.deploy.outputs.url }}" | tee check.json
+          echo
+          grep -q '"load"' check.json || { echo "::error::Worker neodpovedá správne (pozri výpis vyššie)."; exit 1; }
+
+      - name: Zapísať adresu Workera pre stránku
+        if: steps.check.outputs.skip != '1'
+        run: |
+          printf '{"live_url": "%s"}\n' "${{ steps.deploy.outputs.url }}" > site/config.json
+          if ! git diff --quiet -- site/config.json || ! git ls-files --error-unmatch site/config.json >/dev/null 2>&1; then
+            git config user.name "sems-bot"
+            git config user.email "sems-bot@users.noreply.github.com"
+            git add site/config.json
+            git commit -m "Adresa Cloudflare Workera pre okamžité hodnoty"
+            git push
+          fi

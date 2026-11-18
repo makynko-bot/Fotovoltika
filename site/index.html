@@ -207,7 +207,7 @@ function renderLive() {
   }
   const circ = 2 * Math.PI * (HUB - 5);
   const hub = `<circle cx="${C.x}" cy="${C.y}" r="${HUB - 5}" fill="var(--surface)" stroke="var(--border)" stroke-width="7"/>
-    ${own != null ? `<circle cx="${C.x}" cy="${C.y}" r="${HUB - 5}" fill="none" stroke="var(--pv)" stroke-width="7" stroke-linecap="round"
+    ${own > 0.005 ? `<circle cx="${C.x}" cy="${C.y}" r="${HUB - 5}" fill="none" stroke="var(--pv)" stroke-width="7" stroke-linecap="round"
       stroke-dasharray="${(own * circ).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 ${C.x} ${C.y})" class="ring"/>` : ""}
     <text x="${C.x}" y="${C.y + 3}" text-anchor="middle" class="hubv">${own != null ? Math.round(own * 100) + "%" : "–"}</text>
     <text x="${C.x}" y="${C.y + 20}" text-anchor="middle" class="hubk">vlastné</text>`;

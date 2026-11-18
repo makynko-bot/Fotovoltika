@@ -64,6 +64,8 @@ jobs:
         run: |
           mkdir -p site/data
           cp data/history.json site/data/history.json
+          # Adresa Cloudflare Workera pre okamžité hodnoty (premenná repozitára LIVE_URL, nepovinná)
+          printf '{"live_url": "%s"}\n' "${{ vars.LIVE_URL }}" > site/config.json
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

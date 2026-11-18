@@ -61,6 +61,10 @@ th { color: var(--text-2); font-weight: 600; font-size: 13px; }
 .banner { background: color-mix(in srgb, var(--pv) 14%, var(--surface)); border: 1px solid var(--border);
   border-radius: 10px; padding: 8px 12px; margin-top: 12px; font-size: 14px; }
 .err { color: #d03b3b; }
+#liveInfo { display: inline-flex; align-items: center; gap: 6px; }
+.pulse { animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
 </style>
 </head>
 <body>
@@ -72,7 +76,7 @@ th { color: var(--text-2); font-weight: 600; font-size: 13px; }
   <div id="demo" class="banner" hidden>Zobrazujú sa <b>ukážkové dáta</b> – skutočné sa objavia po prvom behu s prihlasovacími údajmi SEMS.</div>
 
   <section class="card">
-    <h2>Práve teraz</h2>
+    <div class="row"><h2>Práve teraz</h2><span class="sub" id="liveInfo"></span></div>
     <div class="tiles" id="live"></div>
   </section>
 
@@ -149,8 +153,9 @@ function tile(label, value, unit, color) {
     <div class="v">${value} <small>${unit}</small></div></div>`;
 }
 
+let liveData = null;
 function renderLive() {
-  const L = H.live || {};
+  const L = liveData || H.live || {};
   const g = L.grid == null ? null : L.grid * (H.grid_sign || 1);
   $("live").innerHTML =
     tile("Výroba FV", fmt(L.pv, 2), "kW", "--pv") +
@@ -283,6 +288,29 @@ async function init() {
   $("dayPick").min = dayKeys[0]; $("dayPick").max = dayKeys[dayKeys.length - 1];
   $("foot").textContent = "Dáta zo SEMS+ sa sťahujú približne každých 15 minút. Denné súčty sú dopočítané z priebehu výkonu, ak ich striedač nehlási priamo.";
   renderAll();
+  startLive();
+}
+
+// Okamžité hodnoty cez Cloudflare Worker (ak je nastavený v config.json)
+async function startLive() {
+  let url = null;
+  try { url = (await (await fetch("config.json?t=" + Date.now())).json()).live_url; } catch (_) {}
+  if (!url) { $("liveInfo").textContent = H.live ? `stav o ${H.live.time}` : ""; return; }
+  const poll = async () => {
+    if (document.hidden) return;
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || r.status);
+      liveData = d; renderLive();
+      $("liveInfo").innerHTML = `<i class="dot pulse" style="background:#0ca30c"></i> naživo · ${new Date(d.time).toLocaleTimeString("sk-SK", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    } catch (e) {
+      $("liveInfo").textContent = "naživo nedostupné, zobrazujem posledný uložený stav";
+    }
+  };
+  poll();
+  setInterval(poll, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 }
 
 $("prev").onclick = () => renderDay(dayKeys[dayKeys.indexOf(current) - 1]);

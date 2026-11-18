@@ -35,6 +35,30 @@ Odvtedy sa dáta aktualizujú samé. Prvé denné súčty budú úplné od nasle
 > Stránka (GitHub Pages) je však verejná pre každého, kto pozná adresu – zobrazuje čísla spotreby.
 > GitHub Pages zo súkromného repozitára vyžaduje platený účet GitHub Pro.
 
+## Okamžitá spotreba naživo (Cloudflare Worker, nepovinné)
+
+Bez tohto kroku sa časť „Práve teraz“ obnovuje len pri každom behu GitHub Actions (~15+ min).
+S Cloudflare Workerom sa obnovuje **každých 30 sekúnd** (SEMS sám dostáva dáta zo striedača
+zhruba každých 5 minút, takže rýchlejšie to cez cloud nejde).
+
+Worker je malý program bežiaci na serveroch Cloudflare – zadarmo do 100 000 požiadaviek denne.
+Prihlási sa do SEMS a stránke vráti iba čísla, heslo zostane u neho.
+
+1. Založ si bezplatný účet na <https://dash.cloudflare.com/sign-up>.
+2. V ľavom menu **Compute (Workers) → Workers & Pages → Create → Start with Hello World**,
+   pomenuj ho napr. `fotovoltika` a daj **Deploy**.
+3. **Edit code** → celý obsah nahraď súborom [`worker/worker.js`](worker/worker.js) → **Deploy**.
+4. Vo Workeri **Settings → Variables and Secrets → Add**, typ **Secret**:
+   `SEMS_ACCOUNT`, `SEMS_PASSWORD`, `SEMS_STATION_ID` (rovnaké hodnoty ako na GitHube).
+   Voliteľne typ *Text*: `ALLOWED_ORIGIN` = `https://<tvoj-github-login>.github.io`
+   (aby sa naň nemohli pýtať iné stránky).
+5. Otvor adresu Workera (napr. `https://fotovoltika.<meno>.workers.dev`) – musíš vidieť
+   niečo ako `{"time":"…","pv":1.2,"load":0.8,…}`.
+6. Na GitHube: **Settings → Secrets and variables → Actions → záložka Variables → New repository variable**
+   `LIVE_URL` = adresa Workera. Potom spusti workflow ručne (alebo počkaj na najbližší beh).
+
+Na stránke sa pri „Práve teraz“ objaví zelená bodka **naživo**.
+
 ## Ako sa počítajú denné súčty
 
 SEMS+ API poskytuje okamžité výkony (kW). Denné kWh sa dopočítajú integráciou vzoriek
@@ -60,4 +84,5 @@ Skutočné dáta: `SEMS_ACCOUNT=... SEMS_PASSWORD=... SEMS_STATION_ID=... python
 - `fetch.py` – klient SEMS+ API a ukladanie histórie
 - `site/index.html` – webová stránka (Chart.js)
 - `.github/workflows/update.yml` – plánované sťahovanie a nasadenie na GitHub Pages
+- `worker/worker.js` – Cloudflare Worker pre okamžité hodnoty
 - `demo.py` – ukážkové dáta

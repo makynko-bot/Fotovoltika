@@ -15,21 +15,21 @@ Na stránke nájdeš:
 
 ## Nastavenie (raz, ~5 minút)
 
-1. **Zisti ID elektrárne.** Prihlás sa na <https://semsplus.goodwe.com> (alebo semsportal.com),
-   otvor svoju elektráreň – ID je dlhý reťazec v adrese stránky
-   (napr. `.../station/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
-2. V repozitári na GitHube choď do **Settings → Secrets and variables → Actions → New repository secret**
-   a pridaj tri tajomstvá:
+1. V repozitári na GitHube choď do **Settings → Secrets and variables → Actions → New repository secret**
+   a pridaj dve tajomstvá:
    | Názov | Hodnota |
    |---|---|
    | `SEMS_ACCOUNT` | e-mail/login do SEMS |
    | `SEMS_PASSWORD` | heslo do SEMS |
-   | `SEMS_STATION_ID` | ID elektrárne z kroku 1 |
-3. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-4. **Actions → „Aktualizácia dát zo SEMS“ → Run workflow.** Po dobehnutí je stránka na
+
+   ID elektrárne netreba – skript si ho po prihlásení nájde sám (ak máš na účte viac elektrární,
+   použije prvú; inú vyberieš tajomstvom `SEMS_STATION_ID`).
+2. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+3. **Actions → „Aktualizácia dát zo SEMS“ → Run workflow.** Po dobehnutí je stránka na
    `https://<tvoj-github-login>.github.io/<názov-repa>/`.
 
-Odvtedy sa dáta aktualizujú samé. Prvé denné súčty budú úplné od nasledujúceho dňa.
+Odvtedy sa dáta aktualizujú samé. Pri prvom behu sa stiahnu denné súčty za posledný rok
+a podrobný priebeh výkonu sa postupne doplní za posledných ~60 dní.
 
 > **Súkromie:** heslo je uložené len v GitHub Secrets a na stránku sa nikdy nedostane.
 > Stránka (GitHub Pages) je však verejná pre každého, kto pozná adresu – zobrazuje čísla spotreby.
@@ -49,7 +49,7 @@ Prihlási sa do SEMS a stránke vráti iba čísla, heslo zostane u neho.
    pomenuj ho napr. `fotovoltika` a daj **Deploy**.
 3. **Edit code** → celý obsah nahraď súborom [`worker/worker.js`](worker/worker.js) → **Deploy**.
 4. Vo Workeri **Settings → Variables and Secrets → Add**, typ **Secret**:
-   `SEMS_ACCOUNT`, `SEMS_PASSWORD`, `SEMS_STATION_ID` (rovnaké hodnoty ako na GitHube).
+   `SEMS_ACCOUNT`, `SEMS_PASSWORD` (rovnaké hodnoty ako na GitHube).
    Voliteľne typ *Text*: `ALLOWED_ORIGIN` = `https://<tvoj-github-login>.github.io`
    (aby sa naň nemohli pýtať iné stránky).
 5. Otvor adresu Workera (napr. `https://fotovoltika.<meno>.workers.dev`) – musíš vidieť
@@ -59,14 +59,12 @@ Prihlási sa do SEMS a stránke vráti iba čísla, heslo zostane u neho.
 
 Na stránke sa pri „Práve teraz“ objaví zelená bodka **naživo**.
 
-## Ako sa počítajú denné súčty
+## Odkiaľ sú dáta
 
-SEMS+ API poskytuje okamžité výkony (kW). Denné kWh sa dopočítajú integráciou vzoriek
-(každých ~15 min), takže sú to dobré odhady, nie úradné hodnoty z elektromera.
-Ak striedač hlási denné počítadlá (napr. `proPvStatsToday` = dnešná výroba), použijú sa namiesto odhadu.
-Zoznam počítadiel, ktoré tvoj striedač posiela, je v `history.json` v poli `counter_codes`.
-
-Smer toku zo siete (odber vs. dodávka) sa určí automaticky z nočných hodnôt.
+- **Denné súčty (kWh)** – zo štatistík SEMS+ (výroba, spotreba, odber, dodávka, nabíjanie/vybíjanie batérie),
+  rovnaké čísla ako v aplikácii SEMS. Ak by pre niektorý deň chýbali, dopočítajú sa z priebehu výkonu (označené ≈).
+- **Priebeh dňa** – výkony z SEMS+ s krokom 5 minút, uchovávané 90 dní.
+- **Okamžitý stav** – tok energie z SEMS+ (pri každom behu, alebo naživo cez Worker).
 
 ## Lokálne vyskúšanie
 
@@ -76,7 +74,7 @@ python demo.py                # vygeneruje ukážkové dáta do site/data/
 cd site && python -m http.server 8000   # otvor http://localhost:8000
 ```
 
-Skutočné dáta: `SEMS_ACCOUNT=... SEMS_PASSWORD=... SEMS_STATION_ID=... python fetch.py`
+Skutočné dáta: `SEMS_ACCOUNT=... SEMS_PASSWORD=... python fetch.py`
 (zapíše do `data/history.json`).
 
 ## Súbory

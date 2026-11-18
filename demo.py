@@ -40,8 +40,9 @@ for i in range(75, -1, -1):
                         round(grid, 3), round(-bat, 3), round(soc)])
     days[d.isoformat()] = {"samples": samples}
 
-h = {"days": days}
-fetch.recompute(h)
+h = {"format": 2, "grid_sign": 1, "station": {"name": "Ukážka"}, "days": days}
+for d in days.values():
+    d["totals"] = fetch.integrate(d["samples"])
 last = days[today.isoformat()]["samples"][-1]
 h["updated"] = f"{today.isoformat()}T{last[0]}:00+01:00"
 h["live"] = dict(zip(["time", "pv", "load", "grid", "bat", "soc"], last))

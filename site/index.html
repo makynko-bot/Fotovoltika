@@ -173,17 +173,13 @@ const ICONS = {
   grid: '<path d="M-8 15 L-3 -13 L3 -13 L8 15 M-12 -7 H12 M-10 1 H10 M-5.5 -1 L5.5 9 M5.5 -1 L-5.5 9" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linejoin="round" stroke-linecap="round"/>',
   home: '<path d="M-13 -1 L0 -13 L13 -1 M-9 -4 V13 H9 V-4 M-3 13 V5 H3 V13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>',
 };
-let batSign = 1;   // +1: kladné pBat = vybíjanie
 
 function renderLive() {
   const L = liveData || H.live || {};
   const has = (v) => v != null && !isNaN(v);
   const pv = Math.max(L.pv || 0, 0), load = Math.max(L.load || 0, 0);
   const g = has(L.grid) ? L.grid * (H.grid_sign || 1) : 0;        // + odber, - dodávka
-  // znamienko batérie odvodíme z energetickej bilancie: vybíjanie = spotreba - FV - odber
-  const resid = load - pv - g;
-  if (has(L.bat) && Math.abs(L.bat) > 0.05 && Math.abs(resid) > 0.05) batSign = Math.sign(resid) * Math.sign(L.bat);
-  const b = has(L.bat) ? L.bat * batSign : 0;                      // + vybíjanie, - nabíjanie
+  const b = has(L.bat) ? L.bat : 0;                                // + vybíjanie, - nabíjanie
   const own = load > 0 ? Math.min(Math.max((load - Math.max(g, 0)) / load, 0), 1) : null;
 
   const C = { x: 320, y: 215 }, HUB = 46, R = 38;
@@ -242,7 +238,7 @@ function flowSummary(pv, load, g, b, soc, own) {
 function renderDay(k) {
   current = k;
   $("dayPick").value = k;
-  $("dayTitle").textContent = dayLabel(k, true);
+  $("dayTitle").textContent = dayLabel(k, true) + ((H.days[k] || {}).exact === false ? " ≈" : "");
   const i = dayKeys.indexOf(k);
   $("prev").disabled = i <= 0;
   $("next").disabled = i < 0 || i >= dayKeys.length - 1;
@@ -361,7 +357,8 @@ async function init() {
   const u = new Date(H.updated);
   $("updated").textContent = "Aktualizované " + u.toLocaleString("sk-SK", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
   $("dayPick").min = dayKeys[0]; $("dayPick").max = dayKeys[dayKeys.length - 1];
-  $("foot").textContent = "Dáta zo SEMS+ sa sťahujú približne každých 15 minút. Denné súčty sú dopočítané z priebehu výkonu, ak ich striedač nehlási priamo.";
+  $("foot").textContent = (H.station && H.station.name ? `Elektráreň ${H.station.name}. ` : "") +
+    "Dáta zo SEMS+ sa sťahujú približne každých 15 minút. Denné súčty sú zo štatistík SEMS (dni označené ≈ sú odhad z priebehu výkonu).";
   renderAll();
   startLive();
 }

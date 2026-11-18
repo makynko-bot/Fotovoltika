@@ -1,11 +1,11 @@
 /**
  * Cloudflare Worker – okamžité hodnoty zo SEMS+ pre stránku „Moja fotovoltika“.
  *
- * GET /  ->  {"time":"2026-11-18T20:15:03+01:00","pv":1.2,"load":0.8,"grid":-0.4,"bat":0,"soc":77}
- *            (výkony v kW, soc v %)
+ * GET /  ->  {"time":"2026-11-18T19:15:03Z","pv":1.2,"load":0.8,"grid":-0.4,"bat":0,"soc":77}
+ *            (výkony v kW, grid > 0 = odber zo siete, bat > 0 = vybíjanie, soc v %)
  *
  * Tajné premenné (Settings → Variables and Secrets, typ „Secret“):
- *   SEMS_ACCOUNT, SEMS_PASSWORD, SEMS_STATION_ID
+ *   SEMS_ACCOUNT, SEMS_PASSWORD  (SEMS_STATION_ID nepovinné – inak prvá elektráreň na účte)
  * Voliteľná premenná:
  *   ALLOWED_ORIGIN – adresa stránky, napr. https://meno.github.io (predvolene * = ktokoľvek)
  */
@@ -19,6 +19,18 @@ const CACHE_SECONDS = 20; // viac návštevníkov naraz = stále len jedna poži
 // Stav sa drží v pamäti inštancie (prežije medzi požiadavkami, kým inštancia beží).
 let session = null;          // { token, apiBase }
 let cached = null;           // { at, body }
+let station = null;          // ID elektrárne (zistí sa automaticky)
+
+async function stationId(env) {
+  if (env.SEMS_STATION_ID) return env.SEMS_STATION_ID;
+  if (!station) {
+    const data = await semsGet(env, "/sems-plant/api/portal/stations/page", { current: 1, size: 100 });
+    const first = ((data && data.dataList) || []).find((s) => s && s.id);
+    if (!first) throw new Error("Na účte sa nenašla žiadna elektráreň");
+    station = String(first.id);
+  }
+  return station;
+}
 
 export default {
   async fetch(request, env) {
@@ -33,7 +45,8 @@ export default {
 
     try {
       if (!cached || Date.now() - cached.at > CACHE_SECONDS * 1000) {
-        const flow = await semsGet(env, `/sems-plant/api/stations/flow?stationId=${encodeURIComponent(env.SEMS_STATION_ID)}`);
+        const station = await stationId(env);
+        const flow = await semsGet(env, `/sems-plant/api/stations/flow?stationId=${encodeURIComponent(station)}`);
         cached = { at: Date.now(), body: JSON.stringify(normalize(flow || {})) };
       }
       return new Response(cached.body, { headers: cors });
@@ -53,7 +66,7 @@ function normalize(f) {
     time: new Date().toISOString(),
     pv: num(f.pSystem ?? f.pAc),
     load: num(f.pConsum),
-    grid: num(f.pGrid),
+    grid: f.pGrid == null ? null : -num(f.pGrid) || 0,   // SEMS+: kladné = dodávka; otočíme na kladné = odber
     bat: num(f.pBat),
     soc: num(f.soc),
   };
@@ -70,8 +83,8 @@ async function signature(token) {
 }
 
 async function login(env) {
-  if (!env.SEMS_ACCOUNT || !env.SEMS_PASSWORD || !env.SEMS_STATION_ID) {
-    throw new Error("Chýbajú SEMS_ACCOUNT / SEMS_PASSWORD / SEMS_STATION_ID");
+  if (!env.SEMS_ACCOUNT || !env.SEMS_PASSWORD) {
+    throw new Error("Chýbajú SEMS_ACCOUNT / SEMS_PASSWORD");
   }
   const r = await fetch(LOGIN_URL, {
     method: "POST",
@@ -92,17 +105,18 @@ async function login(env) {
     throw new Error(`Prihlásenie zlyhalo: ${body.code} ${body.msg || ""}`);
   }
   const api = body.api || body.data.api;
-  session = {
-    token: body.data,
-    apiBase: typeof api === "string" && api.startsWith("https://") ? api.replace(/\/+$/, "") : GATEWAY_URL,
-  };
+  const apiBase = typeof api === "string" && api.startsWith("https://") ? api.replace(/\/+$/, "") : GATEWAY_URL;
+  session = { token: { ...body.data, api: apiBase }, apiBase };
 }
 
-async function semsGet(env, path) {
+async function semsGet(env, path, postBody) {
   if (!session) await login(env);
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await fetch(session.apiBase + path, {
+      method: postBody ? "POST" : "GET",
+      body: postBody ? JSON.stringify(postBody) : undefined,
       headers: {
+        "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": UA,
         "Token": JSON.stringify(session.token),

@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.check.outputs.skip != '1'
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Nasadiť Worker
         id: deploy
@@ -49,7 +49,7 @@ jobs:
           ORIGIN: https://${{ github.repository_owner }}.github.io
         run: |
           set -o pipefail
-          npx --yes wrangler@3.90.0 deploy worker/worker.js \
+          npx --yes wrangler@4.157.0 deploy worker/worker.js \
             --name "$WORKER_NAME" --compatibility-date 2024-11-01 \
             --var "ALLOWED_ORIGIN:${ORIGIN,,}" 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
@@ -67,10 +67,10 @@ jobs:
           SEMS_PASSWORD: ${{ secrets.SEMS_PASSWORD }}
           SEMS_STATION_ID: ${{ secrets.SEMS_STATION_ID }}
         run: |
-          printf '%s' "$SEMS_ACCOUNT"  | npx --yes wrangler@3.90.0 secret put SEMS_ACCOUNT  --name "$WORKER_NAME"
-          printf '%s' "$SEMS_PASSWORD" | npx --yes wrangler@3.90.0 secret put SEMS_PASSWORD --name "$WORKER_NAME"
+          printf '%s' "$SEMS_ACCOUNT"  | npx --yes wrangler@4.157.0 secret put SEMS_ACCOUNT  --name "$WORKER_NAME"
+          printf '%s' "$SEMS_PASSWORD" | npx --yes wrangler@4.157.0 secret put SEMS_PASSWORD --name "$WORKER_NAME"
           if [ -n "$SEMS_STATION_ID" ]; then
-            printf '%s' "$SEMS_STATION_ID" | npx --yes wrangler@3.90.0 secret put SEMS_STATION_ID --name "$WORKER_NAME"
+            printf '%s' "$SEMS_STATION_ID" | npx --yes wrangler@4.157.0 secret put SEMS_STATION_ID --name "$WORKER_NAME"
           fi
 
       - name: Overiť Worker

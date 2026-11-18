@@ -19,6 +19,8 @@ concurrency:
 
 env:
   WORKER_NAME: fotovoltika
+  # ID účtu Cloudflare (nie je tajné); dá sa prepísať premennou repozitára CLOUDFLARE_ACCOUNT_ID
+  CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID || 'dc5d5f32df619d019576a515693d559f' }}
 
 jobs:
   deploy:
@@ -53,6 +55,10 @@ jobs:
             --name "$WORKER_NAME" --compatibility-date 2024-11-01 \
             --var "ALLOWED_ORIGIN:${ORIGIN,,}" 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if grep -qiE "no access|authentication error|10000" deploy.log; then
+            echo "::error::Token nemá oprávnenie upravovať Workers. V Cloudflare vytvor token zo šablóny 'Edit Cloudflare Workers' a ulož ho znova ako CLOUDFLARE_API_TOKEN."
+            exit 1
+          fi
           if [ -z "$url" ]; then
             echo "::error::Nepodarilo sa zistiť adresu Workera. Otvor raz v Cloudflare stránku Workers & Pages (vytvorí sa subdoména workers.dev) a spusti znova."
             exit 1

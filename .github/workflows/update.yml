@@ -1,11 +1,12 @@
 name: Aktualizácia dát zo SEMS
 
+# VYPNUTÉ: automatické spúšťanie je zastavené. Na opätovné zapnutie vráť sem:
+#   schedule:
+#     - cron: "*/15 * * * *"
+#   push:
+#     branches: [main]
 on:
-  schedule:
-    - cron: "*/15 * * * *"   # každých 15 min (GitHub to občas o pár minút posunie)
-  workflow_dispatch:          # ručné spustenie z karty Actions
-  push:
-    branches: [main]
+  workflow_dispatch:          # len ručné spustenie z karty Actions
 
 permissions:
   contents: write

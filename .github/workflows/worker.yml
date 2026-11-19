@@ -4,11 +4,9 @@ name: Nasadenie Cloudflare Workera (naživo)
 # a jeho adresu zapíše do site/config.json, aby ju stránka používala.
 # Potrebuje tajomstvo CLOUDFLARE_API_TOKEN (šablóna „Edit Cloudflare Workers“).
 
+# VYPNUTÉ: spúšťa sa len ručne.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ["worker/**", ".github/workflows/worker.yml"]
 
 permissions:
   contents: write
